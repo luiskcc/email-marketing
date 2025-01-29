@@ -1,8 +1,8 @@
 class RankingsFetchService
     def initialize(user)
         @user = user
-        @location = "@51.8861653,0.8623621,13z"
-        @q = "Marketing agency"
+        @location = "@51.8944857,-0.8919045,13.45z"
+        @q = "Hotels"
     end
 
     def fetch_rankings
@@ -30,27 +30,31 @@ class RankingsFetchService
             return if prospect_hash[:local_results].nil?
 
             # Find the #1 ranked business
-            top_business = prospect_hash[:local_results].find { |r| r[:rank] == 1 }
+            top_business = prospect_hash[:local_results].find { |r| r[:position] == 1 }
             puts "Top business found: #{top_business&.dig(:title)}"
 
+        
+
             prospect_hash[:local_results].each do |result|
-                begin
-                    prospect = Prospect.create!(
-                        industry: result[:type],
-                        website: result[:website],
-                        business_name: result[:title],
-                        rating: result[:rating],
-                        reviews_number: result[:reviews_number],
-                        phone_number: result[:phone_number],
-                        address: result[:address],
-                        location: result[:location],
-                        search_term: @q,
-                        ranking: result[:rank],
-                        top_competitor: result[:rank] == 1 ? nil : top_business&.dig(:title)
-                    )
-                    puts "Created prospect: #{prospect.business_name} (Rank: #{prospect.ranking})"
-                rescue => e
-                    puts "Error creating prospect: #{e.message}"
+                if result[:website].present?
+                    begin
+                        prospect = Prospect.create!(
+                            industry: result[:type],
+                            website: result[:website],
+                            business_name: result[:title],
+                            rating: result[:rating],
+                            reviews_number: result[:reviews_number],
+                            phone_number: result[:phone_number],
+                            address: result[:address],
+                            location: result[:location],
+                            search_term: @q,
+                            ranking: result[:position],
+                            top_competitor: result[:position] == 1 ? nil : top_business&.dig(:title)
+                        )
+                        puts "Created prospect: #{prospect.business_name} (Rank: #{prospect.ranking})"
+                    rescue => e
+                        puts "Error creating prospect: #{e.message}"
+                    end
                 end
             end
         rescue => exception
