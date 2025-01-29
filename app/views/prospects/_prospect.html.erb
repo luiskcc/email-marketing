@@ -1,7 +1,27 @@
-<div id="<%= dom_id prospect %>">
-  <p class="my-5">
-    <strong class="block font-medium mb-1">Index:</strong>
-    <%= prospect.index %>
-  </p>
 
-</div>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Business Name</th>
+      <th>Website</th>
+      <th>Email</th>
+      <th>Number of Reviews</th>
+      <th>Rating</th>
+      <th>Ranking</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @prospects.each do |prospect| %>
+      <tr>
+        <td><%= prospect.business_name%></td>
+        <td><%= prospect.website%></td>
+        <td><%= prospect.email%></td>
+        <td><%= prospect.reviews_number%></td>
+        <td><%= prospect.rating%></td>
+        <td><%= prospect.ranking%></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+
