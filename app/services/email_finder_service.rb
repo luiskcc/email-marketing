@@ -1,121 +1,68 @@
 class EmailFinderService
     include HTTParty  # Add this
     base_uri 'https://api.openai.com/v1'  # Add this
+    require 'nokogiri'
+
+    USER_AGENTS = [
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Firefox/89.0'
+    ]
 
     def initialize(prospects)
-        @prospects = prospects
-        @api_url = "https://api.openai.com/v1/chat/completions"
+        @prospects = Array(prospects)
+        @total = @prospects.size
+        @api_url = "https://api.groq.com/openai/v1"
+        @processed = 0
         @headers = {
             "Content-Type" => "application/json",
-            "Authorization" => "Bearer #{ENV['OPENAI_API_KEY']}"  # Use ENV variable
+            "Authorization" => ENV["GROQ_API_KEY"]  # Use ENV variable
         }
     end
 
     def find_emails
         @prospects.each do |prospect|
-            puts "Processing prospect: #{prospect.business_name}"
-            
-            next if prospect.website.blank?
-            
-            # First, get website content using Perplexity
-            website_content = perplexity_call(prospect.website)
-            next if website_content.blank?
-
-            query = "Based on this website content: #{website_content}
-
-                Find the CEO/Founder Email:
-                - Search for the email address of the company's CEO or founder
-                - Include their name if found
-
-                Fallback Options:
-                1. C-level executive or department head email
-                2. General contact email (only if no personal emails found)
-
-                Guidelines:
-                - Exclude generic helpdesk emails unless no alternatives
-                - No social media links
-                - Must be an email address
-
-                Output Format:
-                {
-                    \"name\": \"[Person's name]\",
-                    \"email\": \"[email address]\",
-                    \"role\": \"[CEO/Founder/etc]\"
-                }
-                
-                If no email found, output: {\"email\": \"none\"}"
-
             begin
-                body = {
-                    "model": "gpt-4",
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": query
-                        }
-                    ],
-                    "temperature": 0.0
-                }
+                puts "Processing prospect #{@processed += 1} of #{@total}: #{prospect.business_name}"   
+                content = get_website_content(prospect.website)
 
-                puts "Making API call for #{prospect.business_name}..."
-                response = HTTParty.post(@api_url, body: body.to_json, headers: @headers, timeout: 500)
-                
-                if response.code == 200
-                    puts "Received response: #{response['choices'][0]['message']['content']}"
-                    result = JSON.parse(response['choices'][0]['message']['content'])
-                    
-                    if result['email'] != 'none'
-                        prospect.update(
-                            email: result['email'],
-                            name: result['name']
-                        )
-                        puts "Updated prospect #{prospect.business_name} with email: #{result['email']}"
-                    else
-                        puts "No email found for #{prospect.business_name}"
-                    end
-                else
-                    puts "Error for prospect #{prospect.business_name}: #{response['error']['message']}"
-                end
-            rescue JSON::ParserError => e
-                puts "Invalid JSON response for #{prospect.business_name}: #{response['choices'][0]['message']['content']}"
-            rescue => e
-                puts "Exception for prospect #{prospect.business_name}: #{e.message}"
+            rescue => exception
+                puts "Error processing prospect #{prospect.business_name}: #{exception.message}"
             end
-            
-            sleep(2)  # Rate limiting
         end
+        Rails.logger.info("Email finder serice completed")
     end
 
-    private
 
-    def perplexity_call(website)
-        perplexity_url = "https://api.perplexity.ai/chat/completions"
-        headers = {
-            "Content-Type" => "application/json",
-            "Authorization" => "Bearer #{ENV['PERPLEXITY_API_KEY']}"
-        }
-
-        body = {
-            model: "sonar-small-online",
-            messages: [
-                {
-                    role: 'system',
-                    content: "Extract content from the website and its subpages #{website} and return the content in text format."
-                }
-            ]
-        }
-
+    def get_website_content(url)
+        puts "Fetching content from #{url}"
         begin
-            response = HTTParty.post(perplexity_url, headers: headers, body: body.to_json)
-            if response.code == 200
-                response['choices'][0]['message']['content']
-            else
-                puts "Perplexity API error: #{response['error']['message']}"
-                nil
-            end
-        rescue => e
-            puts "Perplexity API exception: #{e.message}"
-            nil
+            html = URI.open(url, 'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36').read
+            document = Nokogiri::HTML(html)
+            content = document.text
+        rescue => exception
+            puts "Error processing prospect #{prospect.business_name}: #{exception.message}"
         end
+            
+        fetch_email_from_main_page(content) if content.present?
+    end
+
+    def fetch_email_from_main_page(content)
+        email_pattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/i
+        email = content.scan(email_pattern)
+        if email.empty?
+            Rails.logger.info("No email found in main page, fetching content from secondary pages")
+        else
+            Rails.logger.info("Email found in main page #{email.join(', ')}")
+            prospect.update(email: email.first)  
+        end
+        fetch_content_secondary_pages(content)
+    end
+
+
+    def fetch_content_secondary_pages(content)
+
     end
 end
+
+
